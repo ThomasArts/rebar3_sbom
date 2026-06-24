@@ -45,7 +45,7 @@ init(State) ->
                 "overwite existing files without prompting for confirmation"},
             {strict_version, $V, "strict_version", {boolean, true},
                 "modify the version number of the BoM only when the content changes"},
-            {release, $r, "release", {boolean, false}, "Include the released packages only"},
+            {release, $r, "release", string, "Include the released packages only"},
             {author, $a, "author", string, "the author of the SBoM"}
         ]},
         {short_desc, "Generates CycloneDX SBoM"},
@@ -60,6 +60,8 @@ do(State) ->
     Output = proplists:get_value(output, Args),
     Force = proplists:get_value(force, Args),
     ReleasePkgs = proplists:get_value(release, Args),
+    %% TODO use the release name to create the metadata hash from tar
+    %% TODO use release name to create toplevel component in case of umbrella project
     IsStrictVersion = proplists:get_value(strict_version, Args),
     [App0 | _] = rebar_state:project_apps(State),
     App = rebar_app_info:source(App0, root_app),
@@ -76,7 +78,7 @@ do(State) ->
         PluginDeps
     ),
     PluginInfo = dep_info(Plugin),
-    PluginDepsInfo = [dep_info(Dep) || Dep <- PluginDeps, not ReleasePkgs],
+    PluginDepsInfo = [dep_info(Dep) || Dep <- PluginDeps, ReleasePkgs /= undefined],
     rebar_api:info("PluginDepsInfo = ~p", [PluginDepsInfo]),
 
     FilePath = filepath(Output, Format),
@@ -323,14 +325,9 @@ dep_info(Name, Version, checkout, Common) ->
         | Common
     ];
 dep_info(Name, Version, umbrella, Common) ->
-    GitHubLink = proplists:get_value(github_link, Common, undefined),
-    [
-        {name, Name},
-        {version, Version},
-        {purl, rebar3_sbom_purl:local_otp_app(Name, Version)},
-        {cpe, rebar3_sbom_cpe:cpe(Name, list_to_binary(Version), GitHubLink)}
-        | Common
-    ];
+    Git = os:cmd("git config --get remote.origin.url"),
+    Tag = os:cmd("git describe --tags --abbrev=0"),
+    dep_info(Name, Version, {git, Git, {tag, Tag}}, Common);
 dep_info(Name, Version, root_app, Common) ->
     GitHubLink = proplists:get_value(github_link, Common, undefined),
     Purl = rebar3_sbom_purl:hex(Name, Version),
