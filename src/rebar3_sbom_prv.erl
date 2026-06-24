@@ -45,6 +45,7 @@ init(State) ->
                 "overwite existing files without prompting for confirmation"},
             {strict_version, $V, "strict_version", {boolean, true},
                 "modify the version number of the BoM only when the content changes"},
+            {release, $r, "release", {boolean, false}, "Include the released packages only"},
             {author, $a, "author", string, "the author of the SBoM"}
         ]},
         {short_desc, "Generates CycloneDX SBoM"},
@@ -58,6 +59,7 @@ do(State) ->
     Format = proplists:get_value(format, Args),
     Output = proplists:get_value(output, Args),
     Force = proplists:get_value(force, Args),
+    ReleasePkgs = proplists:get_value(release, Args),
     IsStrictVersion = proplists:get_value(strict_version, Args),
     [App0 | _] = rebar_state:project_apps(State),
     App = rebar_app_info:source(App0, root_app),
@@ -69,7 +71,7 @@ do(State) ->
         PluginDeps
     ),
     PluginInfo = dep_info(Plugin),
-    PluginDepsInfo = [dep_info(Dep) || Dep <- PluginDeps],
+    PluginDepsInfo = [dep_info(Dep) || Dep <- PluginDeps, not ReleasePkgs],
 
     FilePath = filepath(Output, Format),
     DepsInfo = [dep_info(Dep) || Dep <- rebar_state:all_deps(State)],
