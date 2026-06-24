@@ -299,6 +299,11 @@ dep_info(Name, _DepVersion, {git, Git, GitRef}, Common) ->
     ];
 dep_info(Name, Version, {git_subdir, Git, Ref, _Dir}, Common) ->
     dep_info(Name, Version, {git, Git, Ref}, Common);
+%% When using rebar3_path_deps we can translate that back to a git entry
+dep_info(Name, Version, {path, Dir, _Lock}, Common) ->
+    Git = os:cmd("git config --get remote.origin.url"),
+    Ref = os:cmd("git rev-parse HEAD"),
+    dep_info(Name, Version, {git_subdir, Git, {branch, Ref}, Dir}, Common);
 dep_info(Name, Version, checkout, Common) ->
     GitHubLink = proplists:get_value(github_link, Common, undefined),
     [
