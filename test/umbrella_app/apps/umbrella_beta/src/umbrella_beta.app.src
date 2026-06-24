@@ -1,0 +1,17 @@
+{application, umbrella_beta, [
+    {description, "Umbrella beta app for testing rebar3_sbom"},
+    {vsn, "0.1.0"},
+    {registered, []},
+    {mod, {umbrella_beta_app, []}},
+    {applications, [
+        kernel,
+        stdlib
+    ]},
+    {env, []},
+    {modules, []},
+    {licenses, ["BSD-3-Clause"]},
+    {links, [
+        {"GitHub", "https://github.com/example-org/umbrella_beta"}
+    ]},
+    {maintainers, ["Bob"]}
+ ]}.

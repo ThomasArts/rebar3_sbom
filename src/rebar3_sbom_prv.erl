@@ -63,6 +63,11 @@ do(State) ->
     IsStrictVersion = proplists:get_value(strict_version, Args),
     [App0 | _] = rebar_state:project_apps(State),
     App = rebar_app_info:source(App0, root_app),
+    %% TODO change the root app when there are umbrella Apps
+    UmbrellaAppsInfo = [
+        dep_info(rebar_app_info:source(UmbrellaApp, umbrella))
+     || UmbrellaApp <- rebar_state:project_apps(State)
+    ],
     PluginDeps = rebar_state:all_plugin_deps(State),
     {value, Plugin} = lists:search(
         fun(Plugin) ->
@@ -72,9 +77,11 @@ do(State) ->
     ),
     PluginInfo = dep_info(Plugin),
     PluginDepsInfo = [dep_info(Dep) || Dep <- PluginDeps, not ReleasePkgs],
+    rebar_api:info("PluginDepsInfo = ~p", [PluginDepsInfo]),
 
     FilePath = filepath(Output, Format),
-    DepsInfo = [dep_info(Dep) || Dep <- rebar_state:all_deps(State)],
+    DepsInfo = UmbrellaAppsInfo ++ [dep_info(Dep) || Dep <- rebar_state:all_deps(State)],
+    rebar_api:info("DepsInfo = ~p", [DepsInfo]),
     AppInfo = dep_info(App),
     AppInfo2 = [{sha256, hash(AppInfo, rebar_dir:base_dir(State))} | AppInfo],
     MetadataInfo = metadata(State),
@@ -307,6 +314,15 @@ dep_info(Name, Version, {path, Dir, _Lock}, Common) ->
     Ref = os:cmd("git rev-parse HEAD"),
     dep_info(Name, Version, {git_subdir, Git, {branch, Ref}, Dir}, Common);
 dep_info(Name, Version, checkout, Common) ->
+    GitHubLink = proplists:get_value(github_link, Common, undefined),
+    [
+        {name, Name},
+        {version, Version},
+        {purl, rebar3_sbom_purl:local_otp_app(Name, Version)},
+        {cpe, rebar3_sbom_cpe:cpe(Name, list_to_binary(Version), GitHubLink)}
+        | Common
+    ];
+dep_info(Name, Version, umbrella, Common) ->
     GitHubLink = proplists:get_value(github_link, Common, undefined),
     [
         {name, Name},

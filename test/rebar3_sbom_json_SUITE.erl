@@ -50,6 +50,9 @@
 -export([external_references_fallback_test/1]).
 -export([checkout_app_dependency_test/1]).
 
+% umbrella app group test cases
+-export([umbrella_project_apps_present_test/1]).
+
 % Includes
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
@@ -137,12 +140,14 @@
 
 -define(BASIC_APP_SBOM, "basic_app_sbom.json").
 -define(LOCAL_APP_SBOM, "local_app_sbom.json").
+-define(UMBRELLA_APP_SBOM, "umbrella_app_sbom.json").
 %--- Common test functions -----------------------------------------------------
 
 all() ->
     [
         {group, basic_app},
-        {group, local_app}
+        {group, local_app},
+        {group, umbrella_app}
     ].
 
 groups() ->
@@ -190,6 +195,9 @@ groups() ->
             metadata_component_empty_links_cpe_test,
             external_references_fallback_test,
             checkout_app_dependency_test
+        ]},
+        {umbrella_app, [], [
+            umbrella_project_apps_present_test
         ]}
     ].
 
@@ -246,11 +254,20 @@ init_per_group(local_app, Config) ->
     {ok, File} = file:read_file(SBoMPath),
     NewSBoMJSON = json:decode(File),
     [{sbom_json, NewSBoMJSON} | Config];
+init_per_group(umbrella_app, Config) ->
+    State = rebar3_sbom_test_utils:init_rebar_state(Config, "umbrella_app"),
+    PrivDir = ?config(priv_dir, Config),
+    SBoMPath = filename:join(PrivDir, ?UMBRELLA_APP_SBOM),
+    Cmd = ["sbom", "-F", "json", "-o", SBoMPath, "-V", "false", "-f"],
+    {ok, _FinalState} = rebar3:run(State, Cmd),
+    {ok, File} = file:read_file(SBoMPath),
+    NewSBoMJSON = json:decode(File),
+    [{sbom_json, NewSBoMJSON} | Config];
 init_per_group(_, Config) ->
     Config.
 
 end_per_group(GroupName, Config) when
-    GroupName =:= basic_app orelse GroupName =:= local_app
+    GroupName =:= basic_app orelse GroupName =:= local_app orelse GroupName =:= umbrella_app
 ->
     DataDir = ?config(data_dir, Config),
     case GroupName of
@@ -263,6 +280,12 @@ end_per_group(GroupName, Config) when
             AppDir = rebar3_sbom_test_utils:get_app_dir(DataDir, "local_app"),
             file:delete(filename:join(AppDir, "rebar.lock")),
             BuildDir = rebar3_sbom_test_utils:build_dir_path(DataDir, "local_app"),
+            file:delete(BuildDir)
+;
+        umbrella_app ->
+            AppDir = rebar3_sbom_test_utils:get_app_dir(DataDir, "umbrella_app"),
+            file:delete(filename:join(AppDir, "rebar.lock")),
+            BuildDir = rebar3_sbom_test_utils:build_dir_path(DataDir, "umbrella_app"),
             file:delete(BuildDir)
     end;
 end_per_group(_, _Config) ->
@@ -724,6 +747,36 @@ checkout_app_dependency_test(Config) ->
         },
         Dependency
     ).
+
+%--- umbrella_app group ---
+umbrella_project_apps_present_test(Config) ->
+    SBoMJSON = ?config(sbom_json, Config),
+    #{
+        <<"metadata">> := #{<<"component">> := MetadataComponent},
+        <<"components">> := Components
+    } = SBoMJSON,
+    UmbrellaApps = [<<"umbrella_alpha">>, <<"umbrella_beta">>],
+    MetadataName = maps:get(<<"name">>, MetadataComponent),
+    ComponentNames = [maps:get(<<"name">>, Component) || Component <- Components],
+    AllNames = [MetadataName | ComponentNames],
+    lists:foreach(
+        fun(AppName) ->
+            ?assert(
+                lists:member(AppName, AllNames),
+                "Umbrella app '" ++ binary_to_list(AppName) ++ "' is missing from the SBoM"
+            )
+        end,
+        UmbrellaApps
+    ),
+    NonMetadataUmbrellaComponents = [
+        Component
+     || Component <- Components,
+        lists:member(maps:get(<<"name">>, Component), UmbrellaApps),
+        maps:get(<<"name">>, Component) =/= MetadataName
+    ],
+    ?assertEqual(1, length(NonMetadataUmbrellaComponents)),
+    [SecondaryAppComponent] = NonMetadataUmbrellaComponents,
+    ?assertMatch(#{<<"purl">> := <<"pkg:otp/", _/bitstring>>}, SecondaryAppComponent).
 
 %--- Private -------------------------------------------------------------------
 check_component_constraints(Component) ->
